@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parking Card List</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f4f4f9;
+      color: #333;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      flex-direction: column;
+    }
+
+    h1 {
+      color: #4CAF50;
+    }
+
+    table {
+      width: 80%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th,
+    td {
+      padding: 12px;
+      border: 1px solid #ddd;
+      text-align: left;
+    }
+
+    th {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f2f2f2;
+    }
+
+    .button-container {
+      display: flex;
+      justify-content: space-between;
+      width: 80%;
+      margin-top: 20px;
+    }
+
+    .styled-button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 15px 32px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 12px;
+      transition-duration: 0.4s;
+    }
+
+    .styled-button:hover {
+      background-color: white;
+      color: black;
+      border: 2px solid #4CAF50;
+    }
+
+    .delete-button {
+      background-color: #f44336;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 14px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 8px;
+      transition-duration: 0.4s;
+    }
+
+    .delete-button:hover {
+      background-color: white;
+      color: black;
+      border: 2px solid #f44336;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="button-container">
+    <button class="styled-button" onclick="window.location.href='parkingCardList.html'">Parking Card List</button>
+    <button class="styled-button" onclick="window.location.href='index.html'">Create Parking Card</button>
+    <button class="styled-button" onclick="window.location.href='testParking.html'">Test Parking</button>
+  </div>
+  <h1>Parking Card List</h1>
+  <table id="parkingCardTable">
+    <thead>
+      <tr>
+        <th>Card ID</th>
+        <th>Name</th>
+        <th>Address</th>
+        <th>Loại thẻ</th>
+        <th>Member Start Time</th>
+        <th>Member End Time</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Parking cards will be inserted here -->
+    </tbody>
+  </table>
+
+  <h1>Parking Card Sessions</h1>
+  <table id="parkingSessionTable">
+    <thead>
+      <tr>
+        <th>Card ID</th>
+        <th>In</th>
+        <th>Time In</th>
+        <th>Time Out</th>
+        <th>Cost</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Parking sessions will be inserted here -->
+    </tbody>
+  </table>
+
+  <script>
+    async function fetchParkingCards() {
+      try {
+        const response = await fetch('http://localhost:3000/card');
+        const cards = await response.json();
+        const tableBody = document.getElementById('parkingCardTable').getElementsByTagName('tbody')[0];
+
+        cards.forEach(card => {
+          const row = tableBody.insertRow();
+          row.insertCell(0).innerText = card.card_id;
+          row.insertCell(1).innerText = card.name;
+          row.insertCell(2).innerText = card.address;
+          row.insertCell(3).innerText = card.type;
+          row.insertCell(4).innerText = card.member_start ? new Date(card.member_start).toLocaleString() : '';
+          row.insertCell(5).innerText = card.member_end ? new Date(card.member_end).toLocaleString() : '';
+          const actionsCell = row.insertCell(6);
+          const deleteButton = document.createElement('button');
+          deleteButton.innerText = 'Delete';
+          deleteButton.className = 'delete-button';
+          deleteButton.onclick = () => deleteCard(card.card_id);
+          actionsCell.appendChild(deleteButton);
+        });
+      } catch (error) {
+        console.error('Error fetching parking cards:', error);
+      }
+    }
+
+    async function fetchParkingSessions() {
+      try {
+        const response = await fetch('http://localhost:3000/card/session', {
+          method: 'GET'
+        });
+        const sessions = await response.json();
+        const tableBody = document.getElementById('parkingSessionTable').getElementsByTagName('tbody')[0];
+
+        sessions.forEach(session => {
+          const row = tableBody.insertRow();
+          row.insertCell(0).innerText = session.card_id;
+          row.insertCell(1).innerText = session.in ? 'Yes' : 'No';
+          row.insertCell(2).innerText = new Date(session.time_in).toLocaleString();
+          row.insertCell(3).innerText = session.time_out ? new Date(session.time_out).toLocaleString() : '';
+          row.insertCell(4).innerText = session.cost;
+        });
+      } catch (error) {
+        console.error('Error fetching parking sessions:', error);
+      }
+    }
+
+    async function deleteCard(cardId) {
+      try {
+        const response = await fetch(`http://localhost:3000/card/${cardId}`, {
+          method: 'DELETE'
+        });
+        const result = await response.json();
+        alert(result.message);
+        location.reload(); // Reload the page to update the list
+      } catch (error) {
+        console.error('Error deleting parking card:', error);
+      }
+    }
+
+    window.onload = () => {
+      fetchParkingCards();
+      fetchParkingSessions();
+    };
+  </script>
+</body>
+
+</html>
