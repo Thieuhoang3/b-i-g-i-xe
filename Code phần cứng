@@ -1,0 +1,132 @@
+#include <SPI.h>
+#include <MFRC522.h>
+#include <WiFi.h>
+
+// Định nghĩa các chân cho module RC522
+#define RST_PIN1 2  // RST của module 1 nối với GPIO2
+#define SS_PIN1  5  // SDA của module 1 nối với GPIO5
+
+#define RST_PIN2 4  // RST của module 2 nối với GPIO4
+#define SS_PIN2  14 // SDA của module 2 nối với GPIO16
+
+// Thông tin WiFi
+const char* ssid = "home27";
+const char* password = "vankhoa2014";
+
+// URL và IP của API để gửi dữ liệu
+const char* serverIP = "192.168.200.42";
+const int serverPort = 3000;
+
+// Khởi tạo hai đối tượng MFRC522
+MFRC522 rfid1(SS_PIN1, RST_PIN1);
+MFRC522 rfid2(SS_PIN2, RST_PIN2);
+
+WiFiClient client;
+
+// Semaphore để điều phối việc truy cập WiFi
+SemaphoreHandle_t wifiSemaphore;
+
+void setup() {
+  Serial.begin(115200);
+  SPI.begin();
+
+  rfid1.PCD_Init();
+  rfid2.PCD_Init();
+
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting...");
+  }
+  Serial.println("Connected to WiFi");
+  Serial.println(WiFi.localIP());
+
+  // Tạo Semaphore
+  wifiSemaphore = xSemaphoreCreateBinary();
+  xSemaphoreGive(wifiSemaphore); // Semaphore khởi tạo sẵn sàng
+
+  // Tạo hai task để quét thẻ từ
+  xTaskCreate(rfidTask1, "RFID Task 1", 2048, NULL, 1, NULL);
+  xTaskCreate(rfidTask2, "RFID Task 2", 2048, NULL, 1, NULL);
+
+  Serial.println("Ready to scan RFID cards.");
+}
+
+void loop() {
+  // ESP32 không cần code trong loop khi sử dụng FreeRTOS
+}
+
+// Task xử lý quét thẻ từ Module 1
+void rfidTask1(void* pvParameters) {
+  while (true) {
+    checkRFID(rfid1, "Module 1");
+    vTaskDelay(200 / portTICK_PERIOD_MS); // Delay để tránh quét liên tục
+  }
+}
+
+// Task xử lý quét thẻ từ Module 2
+void rfidTask2(void* pvParameters) {
+  while (true) {
+    checkRFID(rfid2, "Module 2");
+    vTaskDelay(200 / portTICK_PERIOD_MS); // Delay để tránh quét liên tục
+  }
+}
+
+// Hàm kiểm tra và gửi UID từ từng module
+void checkRFID(MFRC522 &rfid, String moduleName) {
+  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    // In UID của thẻ
+    Serial.print(moduleName + " - Card UID: ");
+    String cardUID = "";
+    for (byte i = 0; i < rfid.uid.size; i++) {
+      cardUID += String(rfid.uid.uidByte[i], HEX);
+    }
+    cardUID.toUpperCase();
+    Serial.println(cardUID);
+
+    // Gửi UID lên API
+    if (xSemaphoreTake(wifiSemaphore, portMAX_DELAY)) {
+      sendUIDToAPI(cardUID);
+      xSemaphoreGive(wifiSemaphore);
+    }
+
+    // Ngắt kết nối thẻ
+    rfid.PICC_HaltA();
+    rfid.PCD_StopCrypto1();
+  }
+}
+
+void sendUIDToAPI(String uid) {
+  if (client.connect(serverIP, serverPort)) {
+    Serial.println("Sending data to API...");
+    String postData = "card_id=" + uid;
+
+    client.println("POST /card/parkinout HTTP/1.1");
+    client.print("Host: ");
+    client.println(serverIP);
+    client.println("Content-Type: application/x-www-form-urlencoded");
+    client.print("Content-Length: ");
+    client.println(postData.length());
+    client.println();
+    client.println(postData);
+
+    unsigned long timeout = millis();
+    while (client.available() == 0) {
+      if (millis() - timeout > 5000) {
+        Serial.println(">>> Client Timeout !");
+        client.stop();
+        return;
+      }
+    }
+
+    while (client.available()) {
+      String line = client.readStringUntil('\r');
+      Serial.print(line);
+    }
+    Serial.println("Data sent successfully.");
+  } else {
+    Serial.println("Connection to server failed.");
+  }
+  client.stop();
+}
